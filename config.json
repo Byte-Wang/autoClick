@@ -1,0 +1,12 @@
+{
+  "schedule": {
+    "tasks": {
+      "1775373185": {
+        "name": "定时打开提现页面",
+        "url": "https://sellercentral.amazon.com/payments/dashboard/index.html/ref=xx_payments_favb_xx&autoPayment=1",
+        "time": "12:00",
+        "status": true
+      }
+    }
+  }
+}

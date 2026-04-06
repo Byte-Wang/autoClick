@@ -1,0 +1,33 @@
+# 编译产物
+build/
+dist/
+*.exe
+*.pkg
+*.pyz
+*.toc
+*.pyc
+__pycache__/
+
+# 安装程序相关
+*.iss
+*.ps1
+
+# 日志和临时文件
+*.log
+*.tmp
+*.temp
+
+# IDE相关
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统相关
+Thumbs.db
+.DS_Store
+
+# 配置文件（如果包含敏感信息）
+# config.json
+# config.py
