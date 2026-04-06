@@ -1,15 +1,26 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+import sys
+
+# 获取cv2库的路径
+import cv2
+cv2_path = os.path.dirname(cv2.__file__)
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=[
+        # 添加cv2相关文件
+        (os.path.join(cv2_path, '*.pyd'), 'cv2'),
+        (os.path.join(cv2_path, '*.dll'), 'cv2'),
+        (os.path.join(cv2_path, 'config.py'), 'cv2'),
+    ],
+    hiddenimports=['cv2'],
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['loader_dir_hook.py'],
     excludes=[],
     noarchive=False,
     optimize=0,
