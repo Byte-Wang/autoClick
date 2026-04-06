@@ -4,9 +4,14 @@ from tkinter import filedialog
 import threading
 import time
 import os
+import sys
+
+# 添加当前目录到sys.path，确保优先导入项目中的模块
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from schedule_task import ScheduleTaskManager
 from auto_click import AutoClickManager
-from config import ConfigManager
+from app_config import ConfigManager
 
 class AutoToolApp:
     def __init__(self, root):
