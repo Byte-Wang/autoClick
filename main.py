@@ -136,6 +136,51 @@ class AutoToolApp:
         # 显示截图
         canvas.create_image(0, 0, anchor=tk.NW, image=img)
         canvas.image = img
+        
+        # 保存原始截图尺寸和比例
+        original_screen_size = (screen.width, screen.height)
+        screen_ratio = screen.width / screen.height
+        log_message(f"原始截图尺寸: {original_screen_size}, 宽高比: {screen_ratio:.3f}")
+        
+        def on_window_resize(event):
+            """窗口缩放事件处理，保持截图比例"""
+            if not hasattr(canvas, 'image'):
+                return
+                
+            # 获取当前窗口尺寸
+            window_width = event.width
+            window_height = event.height
+            
+            # 计算保持比例的新尺寸
+            new_width = window_width
+            new_height = int(new_width / screen_ratio)
+            
+            # 如果按宽度计算的高度超过窗口高度，则按高度计算
+            if new_height > window_height:
+                new_height = window_height
+                new_width = int(new_height * screen_ratio)
+            
+            # 重新调整画布尺寸
+            canvas.config(width=new_width, height=new_height)
+            
+            # 重新缩放并显示图像
+            try:
+                resized_screen = screen.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                new_img = ImageTk.PhotoImage(resized_screen)
+                canvas.delete("all")  # 清除画布
+                canvas.create_image(0, 0, anchor=tk.NW, image=new_img)
+                canvas.image = new_img  # 保持引用
+                
+                # 重新显示操作提示
+                canvas.create_text(new_width//2, 30, text="拖动鼠标选择要监听的区域，按ESC取消", 
+                                 fill="white", font=("Arial", 14), anchor=tk.CENTER)
+                
+                log_message(f"窗口缩放: {window_width}x{window_height}, 截图调整: {new_width}x{new_height}")
+            except Exception as e:
+                log_message(f"窗口缩放时调整图像出错: {str(e)}")
+        
+        # 绑定窗口缩放事件
+        capture_dialog.bind("<Configure>", on_window_resize)
         log_message("截图窗口创建完成")
         
         # 框选变量
@@ -203,13 +248,22 @@ class AutoToolApp:
             """保存选择的区域"""
             nonlocal selection_made
             
-            # 计算框选区域
-            left = min(start_x, end_x)
-            top = min(start_y, end_y)
-            right = max(start_x, end_x)
-            bottom = max(start_y, end_y)
+            # 获取当前画布尺寸和缩放比例
+            current_canvas_width = canvas.winfo_width()
+            current_canvas_height = canvas.winfo_height()
+            scale_x = original_screen_size[0] / current_canvas_width if current_canvas_width > 0 else 1
+            scale_y = original_screen_size[1] / current_canvas_height if current_canvas_height > 0 else 1
             
-            log_message(f"计算框选区域: ({left}, {top}) - ({right}, {bottom})")
+            # 将画布坐标转换为原始截图坐标
+            left = min(start_x, end_x) * scale_x
+            top = min(start_y, end_y) * scale_y
+            right = max(start_x, end_x) * scale_x
+            bottom = max(start_y, end_y) * scale_y
+            
+            log_message(f"画布尺寸: {current_canvas_width}x{current_canvas_height}")
+            log_message(f"缩放比例: X={scale_x:.3f}, Y={scale_y:.3f}")
+            log_message(f"原始坐标: ({min(start_x, end_x)}, {min(start_y, end_y)}) - ({max(start_x, end_x)}, {max(start_y, end_y)})")
+            log_message(f"转换后坐标: ({int(left)}, {int(top)}) - ({int(right)}, {int(bottom)})")
             
             # 确保框选区域有效
             if right > left and bottom > top:
@@ -223,7 +277,7 @@ class AutoToolApp:
                 
                 # 裁剪图像并保存
                 try:
-                    crop_img = screen.crop((left, top, right, bottom))
+                    crop_img = screen.crop((int(left), int(top), int(right), int(bottom)))
                     log_message(f"图片裁剪完成，尺寸: {crop_img.width}x{crop_img.height}")
                     crop_img.save(dest_path)
                     log_message("图片保存成功")
