@@ -85,6 +85,213 @@ class AutoToolApp:
         # 刷新任务列表
         self.refresh_schedule_list()
     
+    def capture_screen(self, image_var=None):
+        """统一的屏幕截图功能，支持区域选择"""
+        # 创建日志文件
+        log_dir = os.path.join(os.getcwd(), "data", "logs")
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        
+        log_file = os.path.join(log_dir, "screenshot_debug.log")
+        
+        def log_message(message):
+            """记录日志到文件和控制台"""
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+            log_entry = f"[{timestamp}] {message}\n"
+            print(log_entry, end='')
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(log_entry)
+        
+        log_message("开始截图流程")
+        
+        # 创建data/images目录
+        image_dir = os.path.join(os.getcwd(), "data", "images")
+        if not os.path.exists(image_dir):
+            os.makedirs(image_dir)
+            log_message(f"创建图片目录: {image_dir}")
+        
+        # 截取屏幕
+        from PIL import ImageGrab, Image, ImageTk
+        log_message("开始截取屏幕")
+        screen = ImageGrab.grab()
+        log_message(f"屏幕截图完成，尺寸: {screen.width}x{screen.height}")
+        
+        # 创建截图预览窗口
+        log_message("创建截图预览窗口")
+        capture_dialog = tk.Toplevel(self.root)
+        capture_dialog.title("屏幕截图 - 选择区域")
+        capture_dialog.geometry(f"{screen.width}x{screen.height}+0+0")
+        capture_dialog.attributes("-topmost", True)
+        
+        # 确保窗口能够捕获所有鼠标事件
+        capture_dialog.grab_set()
+        capture_dialog.focus_force()
+        
+        # 创建画布
+        from PIL import ImageTk
+        img = ImageTk.PhotoImage(screen)
+        canvas = tk.Canvas(capture_dialog, width=screen.width, height=screen.height, cursor="crosshair")
+        canvas.pack(fill=tk.BOTH, expand=True)
+        
+        # 显示截图
+        canvas.create_image(0, 0, anchor=tk.NW, image=img)
+        canvas.image = img
+        log_message("截图窗口创建完成")
+        
+        # 框选变量
+        start_x = start_y = end_x = end_y = 0
+        rect_id = None
+        selection_made = False
+        
+        # 添加操作提示
+        info_text = canvas.create_text(screen.width//2, 30, text="拖动鼠标选择要监听的区域，按ESC取消", 
+                                     fill="white", font=("Arial", 14), anchor=tk.CENTER)
+        
+        def on_mouse_down(event):
+            nonlocal start_x, start_y, rect_id
+            if selection_made:
+                log_message("鼠标按下事件被忽略，因为选择已完成")
+                return
+            start_x, start_y = event.x, event.y
+            log_message(f"鼠标按下，起始坐标: ({start_x}, {start_y})")
+            # 创建矩形
+            rect_id = canvas.create_rectangle(start_x, start_y, start_x, start_y, 
+                                            outline="red", width=3, fill="", dash=(5, 5))
+            # 移除提示文字
+            canvas.delete(info_text)
+            log_message("提示文字已移除")
+        
+        def on_mouse_move(event):
+            nonlocal end_x, end_y, rect_id
+            if rect_id and not selection_made:
+                end_x, end_y = event.x, event.y
+                canvas.coords(rect_id, start_x, start_y, end_x, end_y)
+                log_message(f"鼠标移动，当前坐标: ({end_x}, {end_y})")
+                
+                # 检查框选是否结束（鼠标移动停止一段时间）
+                check_selection_complete()
+        
+        # 用于检测框选结束的变量
+        last_move_time = time.time()
+        selection_complete_timer = None
+        
+        def check_selection_complete():
+            """检查框选是否完成（鼠标停止移动一段时间）"""
+            nonlocal last_move_time, selection_complete_timer
+            
+            # 取消之前的定时器
+            if selection_complete_timer:
+                capture_dialog.after_cancel(selection_complete_timer)
+            
+            # 更新最后移动时间
+            last_move_time = time.time()
+            
+            # 设置新的定时器，300毫秒后检查是否停止移动
+            selection_complete_timer = capture_dialog.after(300, confirm_if_stopped)
+        
+        def confirm_if_stopped():
+            """如果鼠标停止移动，确认选择"""
+            nonlocal selection_made
+            
+            # 检查是否在最近300毫秒内没有移动
+            if time.time() - last_move_time >= 0.3 and rect_id and not selection_made:
+                log_message("检测到鼠标停止移动，自动确认选择")
+                selection_made = True
+                save_selection()
+        
+        def save_selection():
+            """保存选择的区域"""
+            nonlocal selection_made
+            
+            # 计算框选区域
+            left = min(start_x, end_x)
+            top = min(start_y, end_y)
+            right = max(start_x, end_x)
+            bottom = max(start_y, end_y)
+            
+            log_message(f"计算框选区域: ({left}, {top}) - ({right}, {bottom})")
+            
+            # 确保框选区域有效
+            if right > left and bottom > top:
+                log_message("框选区域有效，开始保存图片")
+                # 直接保存裁剪后的图片
+                import time
+                timestamp = int(time.time())
+                file_name = f"screenshot_{timestamp}.png"
+                dest_path = os.path.join(image_dir, file_name)
+                log_message(f"准备保存到: {dest_path}")
+                
+                # 裁剪图像并保存
+                try:
+                    crop_img = screen.crop((left, top, right, bottom))
+                    log_message(f"图片裁剪完成，尺寸: {crop_img.width}x{crop_img.height}")
+                    crop_img.save(dest_path)
+                    log_message("图片保存成功")
+                    
+                    # 更新路径变量
+                    if image_var:
+                        image_var.set(dest_path)
+                        log_message(f"路径变量已更新: {dest_path}")
+                    else:
+                        log_message("image_var 为 None，跳过路径更新")
+                    
+                    # 关闭窗口
+                    log_message("准备关闭截图窗口")
+                    capture_dialog.destroy()
+                    log_message("截图窗口已关闭")
+                except Exception as e:
+                    log_message(f"保存图片时出错: {str(e)}")
+            else:
+                log_message("框选区域无效，重新开始")
+                # 无效区域，重新开始
+                selection_made = False
+                canvas.delete(rect_id)
+                rect_id = None
+                log_message("已重置选择状态")
+        
+        def on_mouse_up(event):
+            """鼠标释放事件 - 现在主要用于调试"""
+            nonlocal end_x, end_y
+            log_message(f"鼠标释放事件触发，坐标: ({event.x}, {event.y})")
+            
+            # 更新结束坐标，但不立即保存
+            if rect_id and not selection_made:
+                end_x, end_y = event.x, event.y
+                log_message(f"更新结束坐标: ({end_x}, {end_y})")
+                
+                # 立即触发保存检查（因为鼠标已经释放）
+                capture_dialog.after(100, save_selection)
+        
+
+        
+        def on_key_press(event):
+            if event.keysym == "Escape":
+                capture_dialog.destroy()
+        
+        # 延迟绑定事件，确保窗口完全显示
+        def bind_events():
+            log_message("开始绑定事件")
+            log_message(f"画布尺寸: {canvas.winfo_width()}x{canvas.winfo_height()}")
+            log_message(f"窗口尺寸: {capture_dialog.winfo_width()}x{capture_dialog.winfo_height()}")
+            
+            # 绑定事件 - 尝试多种绑定方式
+            canvas.bind("<Button-1>", on_mouse_down)
+            canvas.bind("<B1-Motion>", on_mouse_move)
+            canvas.bind("<ButtonRelease-1>", on_mouse_up)
+            
+            # 同时绑定到窗口和画布，确保能捕获事件
+            capture_dialog.bind("<ButtonRelease-1>", on_mouse_up)
+            capture_dialog.bind("<Key>", on_key_press)
+            
+            # 确保画布能够接收事件
+            canvas.focus_set()
+            capture_dialog.focus_set()
+            
+            log_message("事件绑定完成，开始等待用户操作")
+        
+        # 延迟100毫秒后绑定事件
+        capture_dialog.after(100, bind_events)
+
     def init_auto_click_ui(self):
         # 任务列表
         self.auto_click_tree = ttk.Treeview(self.auto_click_frame, columns=("name", "status"), show="headings")
@@ -289,86 +496,10 @@ class AutoToolApp:
                 # 更新路径变量
                 image_var.set(dest_path)
         
-        def capture_screen():
-            # 创建data/images目录
-            image_dir = os.path.join(os.getcwd(), "data", "images")
-            if not os.path.exists(image_dir):
-                os.makedirs(image_dir)
-            
-            # 截取屏幕
-            from PIL import ImageGrab
-            screen = ImageGrab.grab()
-            
-            # 创建截图预览窗口
-            capture_dialog = tk.Toplevel(dialog)
-            capture_dialog.title("截取屏幕")
-            capture_dialog.attributes("-fullscreen", True)
-            capture_dialog.attributes("-topmost", True)
-            
-            # 创建画布
-            from PIL import ImageTk
-            img = ImageTk.PhotoImage(screen)
-            canvas = tk.Canvas(capture_dialog, width=screen.width, height=screen.height)
-            canvas.pack(fill=tk.BOTH, expand=True)
-            
-            # 显示截图
-            canvas.create_image(0, 0, anchor=tk.NW, image=img)
-            canvas.image = img
-            
-            # 添加半透明黑色遮罩
-            canvas.create_rectangle(0, 0, screen.width, screen.height, fill="black", stipple="gray50")
-            
-            # 框选变量
-            start_x = start_y = end_x = end_y = 0
-            rect_id = None
-            
-            def on_mouse_down(event):
-                nonlocal start_x, start_y, rect_id
-                start_x, start_y = event.x, event.y
-                # 创建矩形
-                rect_id = canvas.create_rectangle(start_x, start_y, start_x, start_y, outline="red", width=2, fill="", dash=(5, 5))
-            
-            def on_mouse_move(event):
-                nonlocal end_x, end_y, rect_id
-                if rect_id:
-                    end_x, end_y = event.x, event.y
-                    canvas.coords(rect_id, start_x, start_y, end_x, end_y)
-            
-            def on_mouse_up(event):
-                nonlocal end_x, end_y
-                end_x, end_y = event.x, event.y
-                
-                # 计算框选区域
-                left = min(start_x, end_x)
-                top = min(start_y, end_y)
-                right = max(start_x, end_x)
-                bottom = max(start_y, end_y)
-                
-                # 确保框选区域有效
-                if right > left and bottom > top:
-                    # 裁剪截图
-                    crop = screen.crop((left, top, right, bottom))
-                    
-                    # 保存裁剪后的图片
-                    import time
-                    timestamp = int(time.time())
-                    file_name = f"screenshot_{timestamp}.png"
-                    dest_path = os.path.join(image_dir, file_name)
-                    crop.save(dest_path)
-                    
-                    # 更新路径变量
-                    image_var.set(dest_path)
-                
-                # 关闭窗口
-                capture_dialog.destroy()
-            
-            # 绑定鼠标事件
-            canvas.bind("<Button-1>", on_mouse_down)
-            canvas.bind("<B1-Motion>", on_mouse_move)
-            canvas.bind("<ButtonRelease-1>", on_mouse_up)
+
         
         ttk.Button(path_frame, text="上传截图", command=upload_image).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(path_frame, text="手动截图", command=capture_screen).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(path_frame, text="手动截图", command=lambda: self.capture_screen(image_var)).pack(side=tk.RIGHT, padx=5)
         
         # 操作清单
         actions_frame = ttk.Frame(dialog)
@@ -853,86 +984,10 @@ class AutoToolApp:
                 # 更新路径变量
                 image_var.set(dest_path)
         
-        def capture_screen():
-            # 创建data/images目录
-            image_dir = os.path.join(os.getcwd(), "data", "images")
-            if not os.path.exists(image_dir):
-                os.makedirs(image_dir)
-            
-            # 截取屏幕
-            from PIL import ImageGrab
-            screen = ImageGrab.grab()
-            
-            # 创建截图预览窗口
-            capture_dialog = tk.Toplevel(dialog)
-            capture_dialog.title("截取屏幕")
-            capture_dialog.attributes("-fullscreen", True)
-            capture_dialog.attributes("-topmost", True)
-            
-            # 创建画布
-            from PIL import ImageTk
-            img = ImageTk.PhotoImage(screen)
-            canvas = tk.Canvas(capture_dialog, width=screen.width, height=screen.height)
-            canvas.pack(fill=tk.BOTH, expand=True)
-            
-            # 显示截图
-            canvas.create_image(0, 0, anchor=tk.NW, image=img)
-            canvas.image = img
-            
-            # 添加半透明黑色遮罩
-            canvas.create_rectangle(0, 0, screen.width, screen.height, fill="black", stipple="gray50")
-            
-            # 框选变量
-            start_x = start_y = end_x = end_y = 0
-            rect_id = None
-            
-            def on_mouse_down(event):
-                nonlocal start_x, start_y, rect_id
-                start_x, start_y = event.x, event.y
-                # 创建矩形
-                rect_id = canvas.create_rectangle(start_x, start_y, start_x, start_y, outline="red", width=2, fill="", dash=(5, 5))
-            
-            def on_mouse_move(event):
-                nonlocal end_x, end_y, rect_id
-                if rect_id:
-                    end_x, end_y = event.x, event.y
-                    canvas.coords(rect_id, start_x, start_y, end_x, end_y)
-            
-            def on_mouse_up(event):
-                nonlocal end_x, end_y
-                end_x, end_y = event.x, event.y
-                
-                # 计算框选区域
-                left = min(start_x, end_x)
-                top = min(start_y, end_y)
-                right = max(start_x, end_x)
-                bottom = max(start_y, end_y)
-                
-                # 确保框选区域有效
-                if right > left and bottom > top:
-                    # 裁剪截图
-                    crop = screen.crop((left, top, right, bottom))
-                    
-                    # 保存裁剪后的图片
-                    import time
-                    timestamp = int(time.time())
-                    file_name = f"screenshot_{timestamp}.png"
-                    dest_path = os.path.join(image_dir, file_name)
-                    crop.save(dest_path)
-                    
-                    # 更新路径变量
-                    image_var.set(dest_path)
-                
-                # 关闭窗口
-                capture_dialog.destroy()
-            
-            # 绑定鼠标事件
-            canvas.bind("<Button-1>", on_mouse_down)
-            canvas.bind("<B1-Motion>", on_mouse_move)
-            canvas.bind("<ButtonRelease-1>", on_mouse_up)
+
         
         ttk.Button(path_frame, text="上传截图", command=upload_image).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(path_frame, text="手动截图", command=capture_screen).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(path_frame, text="手动截图", command=lambda: self.capture_screen(image_var)).pack(side=tk.RIGHT, padx=5)
         
         # 操作清单
         actions_frame = ttk.Frame(dialog)
@@ -1476,9 +1531,16 @@ class AutoToolApp:
                 if hasattr(self.auto_click_manager, 'latest_screenshot') and self.auto_click_manager.latest_screenshot:
                     screenshot_path = self.auto_click_manager.latest_screenshot
                     if os.path.exists(screenshot_path):
-                        # 加载并显示截图
-                        from PIL import Image, ImageTk
-                        img = Image.open(screenshot_path)
+                        # 使用文件访问锁保护文件操作
+                        if hasattr(self.auto_click_manager, 'file_lock'):
+                            with self.auto_click_manager.file_lock:
+                                # 加载并显示截图
+                                from PIL import Image, ImageTk
+                                img = Image.open(screenshot_path)
+                        else:
+                            # 加载并显示截图
+                            from PIL import Image, ImageTk
+                            img = Image.open(screenshot_path)
                         
                         # 获取截图显示区域的大小
                         label_width = self.screenshot_label.winfo_width()

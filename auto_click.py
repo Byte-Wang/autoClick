@@ -5,6 +5,7 @@ import time
 import threading
 from PIL import ImageGrab
 import datetime
+import glob
 
 class AutoClickManager:
     def __init__(self, config_manager):
@@ -15,6 +16,7 @@ class AutoClickManager:
         self.executing = False  # 标记是否正在执行操作
         self.logs = []  # 日志列表
         self.latest_screenshot = None  # 最新截图路径
+        self.file_lock = threading.Lock()  # 文件访问锁
         
         # 创建日志和截图目录
         self.log_dir = os.path.join(os.getcwd(), "data", "logs")
@@ -99,15 +101,26 @@ class AutoClickManager:
             # 截取屏幕
             screenshot = ImageGrab.grab()
             
-            # 删除上一次的截图
-            if self.latest_screenshot and os.path.exists(self.latest_screenshot):
-                os.remove(self.latest_screenshot)
-            
-            # 保存最新截图
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            screenshot_path = os.path.join(self.screenshot_dir, f"screenshot_{timestamp}.png")
-            screenshot.save(screenshot_path)
-            self.latest_screenshot = screenshot_path
+            # 使用文件访问锁保护文件操作
+            with self.file_lock:
+                # 延迟删除策略：只保留最近3个截图，删除更早的
+                screenshot_files = sorted([f for f in os.listdir(self.screenshot_dir) 
+                                          if f.startswith('screenshot_') and f.endswith('.png')])
+                if len(screenshot_files) > 3:
+                    for old_file in screenshot_files[:-3]:
+                        old_path = os.path.join(self.screenshot_dir, old_file)
+                        try:
+                            if old_path != self.latest_screenshot:  # 避免删除当前正在显示的文件
+                                os.remove(old_path)
+                        except Exception as e:
+                            # 忽略删除失败，继续执行
+                            self.add_log(f"删除旧截图失败: {e}")
+                
+                # 保存最新截图
+                timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                screenshot_path = os.path.join(self.screenshot_dir, f"screenshot_{timestamp}.png")
+                screenshot.save(screenshot_path)
+                self.latest_screenshot = screenshot_path
             
             # 添加日志
             self.add_log(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 屏幕监听: 截取屏幕成功")
