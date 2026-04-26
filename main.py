@@ -154,9 +154,10 @@ class AutoToolApp:
 
 
     def capture_screen(self, image_var=None):
-        """最简单的调试方法 - 只测试方法调用和日志写入"""
+        """统一的屏幕截图功能，支持区域选择"""
         import os
         import time
+        from PIL import Image, ImageTk  # 确保导入Image模块
         
         log_dir = os.path.join(os.getcwd(), "data", "logs")
         if not os.path.exists(log_dir):
@@ -172,7 +173,6 @@ class AutoToolApp:
             with open(log_file, "a", encoding="utf-8") as f:
                 f.write(log_entry)
         
-        log_message("开始截图流程")
         log_message("开始截图流程")
         log_message(f"image_var 参数: {image_var}")
         log_message(f"image_var 类型: {type(image_var)}")
@@ -201,7 +201,19 @@ class AutoToolApp:
         log_message("创建截图预览窗口")
         capture_dialog = tk.Toplevel(self.root)
         capture_dialog.title("屏幕截图 - 选择区域")
-        capture_dialog.geometry(f"{screen.width}x{screen.height}+0+0")
+        
+        # 设置窗口大小为屏幕的80%
+        import ctypes
+        screen_width = ctypes.windll.user32.GetSystemMetrics(0)
+        screen_height = ctypes.windll.user32.GetSystemMetrics(1)
+        window_width = int(screen_width * 0.8)
+        window_height = int(screen_height * 0.8)
+        
+        # 计算窗口居中位置
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        
+        capture_dialog.geometry(f"{window_width}x{window_height}+{x}+{y}")
         capture_dialog.attributes("-topmost", True)
         
         # 确保窗口能够捕获所有鼠标事件
@@ -209,14 +221,28 @@ class AutoToolApp:
         capture_dialog.focus_force()
         
         # 创建画布
-        from PIL import ImageTk
         img = ImageTk.PhotoImage(screen)
-        canvas = tk.Canvas(capture_dialog, width=screen.width, height=screen.height, cursor="crosshair")
+        canvas = tk.Canvas(capture_dialog, width=window_width, height=window_height, cursor="crosshair")
         canvas.pack(fill=tk.BOTH, expand=True)
         
-        # 显示截图
-        canvas.create_image(0, 0, anchor=tk.NW, image=img)
-        canvas.image = img
+        # 显示截图（缩放以适应窗口大小）
+        # 计算缩放比例
+        scale_x = window_width / screen.width
+        scale_y = window_height / screen.height
+        scale = min(scale_x, scale_y)
+        
+        # 缩放图像
+        scaled_width = int(screen.width * scale)
+        scaled_height = int(screen.height * scale)
+        scaled_screen = screen.resize((scaled_width, scaled_height), Image.Resampling.LANCZOS)
+        scaled_img = ImageTk.PhotoImage(scaled_screen)
+        
+        # 居中显示
+        x_offset = (window_width - scaled_width) // 2
+        y_offset = (window_height - scaled_height) // 2
+        
+        canvas.create_image(x_offset, y_offset, anchor=tk.NW, image=scaled_img)
+        canvas.image = scaled_img
         
         # 保存原始截图尺寸和比例
         original_screen_size = (screen.width, screen.height)
