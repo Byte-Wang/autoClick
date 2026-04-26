@@ -151,10 +151,13 @@ class AutoToolApp:
         
         # 刷新任务列表
         self.refresh_schedule_list()
-    
+
+
     def capture_screen(self, image_var=None):
-        """统一的屏幕截图功能，支持区域选择"""
-        # 创建日志文件
+        """最简单的调试方法 - 只测试方法调用和日志写入"""
+        import os
+        import time
+        
         log_dir = os.path.join(os.getcwd(), "data", "logs")
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
@@ -170,79 +173,30 @@ class AutoToolApp:
                 f.write(log_entry)
         
         log_message("开始截图流程")
+        log_message("开始截图流程")
+        log_message(f"image_var 参数: {image_var}")
+        log_message(f"image_var 类型: {type(image_var)}")
+        if image_var:
+            log_message(f"image_var 当前值: {image_var.get()}")
         
         # 创建data/images目录
         image_dir = os.path.join(os.getcwd(), "data", "images")
         if not os.path.exists(image_dir):
             os.makedirs(image_dir)
             log_message(f"创建图片目录: {image_dir}")
+
+        log_message("开始使用增强截图方法")
         
-        # 截取屏幕 - 使用nircmd.exe
-        from PIL import Image, ImageTk
-        import subprocess
-        import time
+        # 使用auto_click_manager的增强截图方法
+        screen = self.auto_click_manager.enhanced_screenshot()
         
-        log_message("开始使用nircmd.exe截取屏幕")
-        
-        # 获取当前程序目录
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        # nircmd.exe路径配置
-        nircmd_paths = [
-            os.path.join(current_dir, "nircmd.exe"),  # 当前程序目录
-            os.path.join(current_dir, "..", "nircmd.exe"),  # 上级目录
-            r"C:\Users\Administrator\Downloads\nircmdnet_64714\nircmd-x64\nircmd.exe",  # 用户指定路径
-            r"C:\Program Files\nircmd\nircmd.exe",  # 程序文件目录
-            r"C:\Program Files (x86)\nircmd\nircmd.exe"  # 程序文件目录(x86)
-        ]
-        
-        # 查找nircmd.exe路径
-        nircmd_path = None
-        for path in nircmd_paths:
-            if os.path.exists(path):
-                nircmd_path = path
-                break
-        
-        if not nircmd_path:
-            log_message("未找到nircmd.exe，请确保nircmd.exe已放置在程序目录或指定路径")
+        if not screen:
+            log_message("增强截图方法返回None，截图失败")
+            tk.messagebox.showerror("错误", "截图失败，请检查截图工具是否正常工作")
             return
         
-        log_message(f"找到nircmd.exe: {nircmd_path}")
-        
-        # 创建临时截图文件
-        timestamp = int(time.time())
-        temp_screenshot = os.path.join(image_dir, f"temp_screenshot_{timestamp}.png")
-        
-        # 执行nircmd截图命令
-        cmd = [nircmd_path, "savescreenshot", f'"{temp_screenshot}"']
-        log_message(f"执行nircmd命令: {' '.join(cmd)}")
-        
-        result = subprocess.run(cmd, capture_output=True, timeout=10)
-        
-        if result.returncode == 0:
-            log_message("nircmd截图执行成功")
-            
-            # 等待文件创建完成
-            time.sleep(1)
-            
-            # 检查截图文件是否存在
-            if os.path.exists(temp_screenshot) and os.path.getsize(temp_screenshot) > 0:
-                try:
-                    # 加载截图文件
-                    screen = Image.open(temp_screenshot)
-                    log_message(f"nircmd截图成功，尺寸: {screen.width}x{screen.height}")
-                except Exception as e:
-                    log_message(f"加载截图文件失败: {e}")
-                    return
-            else:
-                log_message(f"截图文件不存在或为空: {temp_screenshot}")
-                return
-        else:
-            log_message(f"nircmd执行失败，返回码: {result.returncode}")
-            if result.stderr:
-                log_message(f"错误信息: {result.stderr.decode('utf-8', errors='ignore')}")
-            return
-        
+        log_message(f"增强截图成功，尺寸: {screen.width}x{screen.height}")
+
         # 创建截图预览窗口
         log_message("创建截图预览窗口")
         capture_dialog = tk.Toplevel(self.root)
@@ -472,7 +426,7 @@ class AutoToolApp:
         
         # 延迟100毫秒后绑定事件
         capture_dialog.after(100, bind_events)
-
+    
     def init_auto_click_ui(self):
         # 任务列表
         self.auto_click_tree = ttk.Treeview(self.auto_click_frame, columns=("name", "status"), show="headings")
@@ -688,7 +642,11 @@ class AutoToolApp:
 
         
         ttk.Button(path_frame, text="上传截图", command=upload_image).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(path_frame, text="手动截图", command=lambda: self.capture_screen(image_var)).pack(side=tk.RIGHT, padx=5)
+        
+        # 使用functools.partial避免lambda作用域问题
+        import functools
+        ttk.Button(path_frame, text="手动截图", 
+                  command=functools.partial(self.capture_screen, image_var)).pack(side=tk.RIGHT, padx=5)
         
         # 操作清单
         actions_frame = ttk.Frame(dialog)
@@ -1176,7 +1134,11 @@ class AutoToolApp:
 
         
         ttk.Button(path_frame, text="上传截图", command=upload_image).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(path_frame, text="手动截图", command=lambda: self.capture_screen(image_var)).pack(side=tk.RIGHT, padx=5)
+        
+        # 使用functools.partial避免lambda作用域问题
+        import functools
+        ttk.Button(path_frame, text="手动截图", 
+                  command=functools.partial(self.capture_screen, image_var)).pack(side=tk.RIGHT, padx=5)
         
         # 操作清单
         actions_frame = ttk.Frame(dialog)
@@ -1740,6 +1702,21 @@ class AutoToolApp:
             dialog = tk.Toplevel(self.root)
             dialog.title("截图测试")
             dialog.geometry("800x600")
+            
+            # 添加手动截图测试按钮
+            test_button_frame = ttk.Frame(dialog)
+            test_button_frame.pack(fill=tk.X, padx=10, pady=10)
+            
+            ttk.Label(test_button_frame, text="手动截图功能测试:").pack(anchor=tk.W)
+            
+            # 测试按钮1：直接调用capture_screen
+            ttk.Button(test_button_frame, text="测试直接调用capture_screen", 
+                      command=lambda: self.capture_screen()).pack(side=tk.LEFT, padx=5)
+            
+            # 测试按钮2：创建StringVar并调用
+            test_var = tk.StringVar()
+            ttk.Button(test_button_frame, text="测试带StringVar调用", 
+                      command=lambda: self.capture_screen(test_var)).pack(side=tk.LEFT, padx=5)
             
             # 创建文本区域显示日志
             log_text = tk.Text(dialog, wrap=tk.WORD, height=20)
