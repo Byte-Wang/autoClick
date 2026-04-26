@@ -71,6 +71,21 @@ if exist "dist\auto_tool\auto_tool.exe" (
         echo ⚠ Warning: No DLL files detected
     )
     
+    # 复制nircmd.exe到打包结果目录
+    echo.
+    echo Copying nircmd.exe to distribution directory...
+    if exist "nircmd.exe" (
+        copy "nircmd.exe" "dist\auto_tool\" > nul
+        if not errorlevel 1 (
+            echo ✓ nircmd.exe copied successfully
+        ) else (
+            echo ⚠ Warning: Failed to copy nircmd.exe
+        )
+    ) else (
+        echo ⚠ Warning: nircmd.exe not found in current directory
+        echo Please ensure nircmd.exe is placed in the project directory before packaging
+    )
+    
     echo.
     echo File list:
     dir "dist\auto_tool" /b

@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('icon.png', '.'), ('config.json', '.'), ('git-download.html', '.')],
+    datas=[('icon.png', '.'), ('config.json', '.'), ('git-download.html', '.'), ('nircmd.exe', '.')],
     hiddenimports=['cv2', 'numpy', 'pyautogui', 'PIL', 'PIL.Image', 'PIL.ImageGrab'],
     hookspath=[],
     hooksconfig={},

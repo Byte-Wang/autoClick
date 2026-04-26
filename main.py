@@ -1,23 +1,90 @@
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog
+import tkinter.font
 import threading
 import time
 import os
 import sys
+import ctypes
 
 # 添加当前目录到sys.path，确保优先导入项目中的模块
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from schedule_task import ScheduleTaskManager
-from auto_click import AutoClickManager
+from enhanced_auto_click import EnhancedAutoClickManager
 from app_config import ConfigManager
+
+# 设置DPI感知，确保在远程桌面环境下正确显示
+if os.name == 'nt':  # Windows系统
+    try:
+        # 设置进程为DPI感知
+        ctypes.windll.user32.SetProcessDPIAware()
+        
+        # 获取系统DPI缩放比例
+        hdc = ctypes.windll.user32.GetDC(0)
+        dpi_x = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)  # LOGPIXELSX
+        ctypes.windll.user32.ReleaseDC(0, hdc)
+        dpi_scale = dpi_x / 96.0
+        
+        # 设置tkinter的缩放比例
+        if dpi_scale > 1.0:
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except:
+        pass
 
 class AutoToolApp:
     def __init__(self, root):
         self.root = root
         self.root.title("自动化工具")
-        self.root.geometry("1600x1200")
+        
+        # 获取系统信息并智能调整窗口大小
+        try:
+            # 获取实际屏幕尺寸
+            screen_width = ctypes.windll.user32.GetSystemMetrics(0)
+            screen_height = ctypes.windll.user32.GetSystemMetrics(1)
+            
+            # 获取DPI信息
+            hdc = ctypes.windll.user32.GetDC(0)
+            dpi_x = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)  # LOGPIXELSX
+            ctypes.windll.user32.ReleaseDC(0, hdc)
+            dpi_scale = dpi_x / 96.0
+            
+            # 智能窗口大小计算
+            base_width = 1200  # 降低基础宽度以适应小屏幕
+            base_height = 800  # 降低基础高度以适应小屏幕
+            
+            # 确保窗口不超过屏幕尺寸的80%
+            max_width = int(screen_width * 0.8)
+            max_height = int(screen_height * 0.8)
+            
+            # 计算最终窗口大小
+            scaled_width = min(int(base_width / dpi_scale), max_width)
+            scaled_height = min(int(base_height / dpi_scale), max_height)
+            
+            # 确保最小尺寸
+            min_width = 800
+            min_height = 600
+            scaled_width = max(scaled_width, min_width)
+            scaled_height = max(scaled_height, min_height)
+            
+            self.root.geometry(f"{scaled_width}x{scaled_height}")
+            
+            # 设置字体大小适应DPI
+            default_font = tk.font.nametofont("TkDefaultFont")
+            font_size = max(8, int(10 / dpi_scale))  # 确保最小字体大小
+            default_font.configure(size=font_size)
+            
+            # 记录窗口设置信息
+            print(f"屏幕尺寸: {screen_width}x{screen_height}")
+            print(f"DPI缩放: {dpi_scale}")
+            print(f"窗口大小: {scaled_width}x{scaled_height}")
+            
+        except Exception as e:
+            # 如果获取失败，使用安全的默认大小
+            print(f"窗口设置失败: {e}")
+            self.root.geometry("1000x700")  # 更小的默认大小
         
         # 配置管理
         self.config_manager = ConfigManager()
@@ -25,8 +92,8 @@ class AutoToolApp:
         # 定时任务管理器
         self.schedule_manager = ScheduleTaskManager(self.config_manager)
         
-        # 自动化点击管理器
-        self.auto_click_manager = AutoClickManager(self.config_manager)
+        # 自动化点击管理器（使用增强版本，支持远程桌面）
+        self.auto_click_manager = EnhancedAutoClickManager(self.config_manager)
         
         # 创建标签页
         self.notebook = ttk.Notebook(root)
@@ -110,11 +177,71 @@ class AutoToolApp:
             os.makedirs(image_dir)
             log_message(f"创建图片目录: {image_dir}")
         
-        # 截取屏幕
-        from PIL import ImageGrab, Image, ImageTk
-        log_message("开始截取屏幕")
-        screen = ImageGrab.grab()
-        log_message(f"屏幕截图完成，尺寸: {screen.width}x{screen.height}")
+        # 截取屏幕 - 使用nircmd.exe
+        from PIL import Image, ImageTk
+        import subprocess
+        import time
+        
+        log_message("开始使用nircmd.exe截取屏幕")
+        
+        # 获取当前程序目录
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # nircmd.exe路径配置
+        nircmd_paths = [
+            os.path.join(current_dir, "nircmd.exe"),  # 当前程序目录
+            os.path.join(current_dir, "..", "nircmd.exe"),  # 上级目录
+            r"C:\Users\Administrator\Downloads\nircmdnet_64714\nircmd-x64\nircmd.exe",  # 用户指定路径
+            r"C:\Program Files\nircmd\nircmd.exe",  # 程序文件目录
+            r"C:\Program Files (x86)\nircmd\nircmd.exe"  # 程序文件目录(x86)
+        ]
+        
+        # 查找nircmd.exe路径
+        nircmd_path = None
+        for path in nircmd_paths:
+            if os.path.exists(path):
+                nircmd_path = path
+                break
+        
+        if not nircmd_path:
+            log_message("未找到nircmd.exe，请确保nircmd.exe已放置在程序目录或指定路径")
+            return
+        
+        log_message(f"找到nircmd.exe: {nircmd_path}")
+        
+        # 创建临时截图文件
+        timestamp = int(time.time())
+        temp_screenshot = os.path.join(image_dir, f"temp_screenshot_{timestamp}.png")
+        
+        # 执行nircmd截图命令
+        cmd = [nircmd_path, "savescreenshot", f'"{temp_screenshot}"']
+        log_message(f"执行nircmd命令: {' '.join(cmd)}")
+        
+        result = subprocess.run(cmd, capture_output=True, timeout=10)
+        
+        if result.returncode == 0:
+            log_message("nircmd截图执行成功")
+            
+            # 等待文件创建完成
+            time.sleep(1)
+            
+            # 检查截图文件是否存在
+            if os.path.exists(temp_screenshot) and os.path.getsize(temp_screenshot) > 0:
+                try:
+                    # 加载截图文件
+                    screen = Image.open(temp_screenshot)
+                    log_message(f"nircmd截图成功，尺寸: {screen.width}x{screen.height}")
+                except Exception as e:
+                    log_message(f"加载截图文件失败: {e}")
+                    return
+            else:
+                log_message(f"截图文件不存在或为空: {temp_screenshot}")
+                return
+        else:
+            log_message(f"nircmd执行失败，返回码: {result.returncode}")
+            if result.stderr:
+                log_message(f"错误信息: {result.stderr.decode('utf-8', errors='ignore')}")
+            return
         
         # 创建截图预览窗口
         log_message("创建截图预览窗口")
@@ -378,6 +505,14 @@ class AutoToolApp:
         
         import_btn = ttk.Button(button_frame, text="导入配置", command=self.import_auto_click_config)
         import_btn.pack(side=tk.LEFT, padx=5)
+        
+        # 系统信息按钮
+        info_btn = ttk.Button(button_frame, text="系统信息", command=self.show_system_info)
+        info_btn.pack(side=tk.LEFT, padx=5)
+        
+        # 截图测试按钮
+        test_screenshot_btn = ttk.Button(button_frame, text="测试截图", command=self.test_screenshot)
+        test_screenshot_btn.pack(side=tk.LEFT, padx=5)
         
         # 监听频率设置
         freq_frame = ttk.Frame(self.auto_click_frame)
@@ -1528,6 +1663,138 @@ class AutoToolApp:
                 self.config_manager.set_config("auto_click", "listen_freq", str(freq))
         except ValueError:
             pass
+    
+    def show_system_info(self):
+        """显示系统信息，用于调试远程桌面环境问题"""
+        try:
+            import pyautogui
+            
+            # 获取系统信息
+            info_text = "=== 系统信息 ===\n"
+            
+            # DPI信息
+            try:
+                hdc = ctypes.windll.user32.GetDC(0)
+                dpi_x = ctypes.windll.gdi32.GetDeviceCaps(hdc, 88)  # LOGPIXELSX
+                dpi_y = ctypes.windll.gdi32.GetDeviceCaps(hdc, 90)  # LOGPIXELSY
+                ctypes.windll.user32.ReleaseDC(0, hdc)
+                dpi_scale = dpi_x / 96.0
+                info_text += f"DPI缩放比例: {dpi_scale:.2f} (X:{dpi_x}, Y:{dpi_y})\n"
+            except:
+                info_text += "DPI信息获取失败\n"
+            
+            # 屏幕尺寸信息
+            try:
+                screen_width = ctypes.windll.user32.GetSystemMetrics(0)  # SM_CXSCREEN
+                screen_height = ctypes.windll.user32.GetSystemMetrics(1)  # SM_CYSCREEN
+                info_text += f"系统屏幕尺寸: {screen_width}x{screen_height}\n"
+            except:
+                info_text += "系统屏幕尺寸获取失败\n"
+            
+            # 虚拟屏幕尺寸
+            try:
+                virtual_width = ctypes.windll.user32.GetSystemMetrics(78)  # SM_CXVIRTUALSCREEN
+                virtual_height = ctypes.windll.user32.GetSystemMetrics(79)  # SM_CYVIRTUALSCREEN
+                info_text += f"虚拟屏幕尺寸: {virtual_width}x{virtual_height}\n"
+            except:
+                info_text += "虚拟屏幕尺寸获取失败\n"
+            
+            # pyautogui屏幕尺寸
+            try:
+                pg_size = pyautogui.size()
+                info_text += f"pyautogui屏幕尺寸: {pg_size.width}x{pg_size.height}\n"
+            except:
+                info_text += "pyautogui屏幕尺寸获取失败\n"
+            
+            # 增强管理器信息
+            if hasattr(self.auto_click_manager, 'dpi_manager'):
+                dpi_mgr = self.auto_click_manager.dpi_manager
+                info_text += f"增强管理器DPI缩放: {dpi_mgr.dpi_scale:.2f}\n"
+                info_text += f"增强管理器屏幕尺寸: {dpi_mgr.screen_width}x{dpi_mgr.screen_height}\n"
+            
+            info_text += "=== 系统信息结束 ==="
+            
+            # 显示信息对话框
+            dialog = tk.Toplevel(self.root)
+            dialog.title("系统信息")
+            dialog.geometry("600x400")
+            
+            text_widget = tk.Text(dialog, wrap=tk.WORD)
+            text_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            text_widget.insert(tk.END, info_text)
+            text_widget.config(state=tk.DISABLED)
+            
+            ttk.Button(dialog, text="关闭", command=dialog.destroy).pack(pady=10)
+            
+        except Exception as e:
+            tk.messagebox.showerror("错误", f"获取系统信息失败: {str(e)}")
+    
+    def test_screenshot(self):
+        """测试截图功能，显示详细的调试信息"""
+        try:
+            # 导入必要的模块
+            from PIL import ImageGrab
+            import pyautogui
+            
+            # 创建测试对话框
+            dialog = tk.Toplevel(self.root)
+            dialog.title("截图测试")
+            dialog.geometry("800x600")
+            
+            # 创建文本区域显示日志
+            log_text = tk.Text(dialog, wrap=tk.WORD, height=20)
+            log_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            def add_log(message):
+                log_text.insert(tk.END, message + "\n")
+                log_text.see(tk.END)
+                dialog.update()
+            
+            # 开始测试
+            add_log("=== 开始截图测试 ===")
+            
+            # 测试各种截图方法
+            screenshot_methods = [
+                ("ImageGrab.grab()", lambda: ImageGrab.grab()),
+                ("ImageGrab.grab(all_screens=True)", lambda: ImageGrab.grab(all_screens=True)),
+                ("pyautogui.screenshot()", lambda: pyautogui.screenshot()),
+                ("增强截图方法", self.auto_click_manager.enhanced_screenshot)
+            ]
+            
+            for method_name, method_func in screenshot_methods:
+                add_log(f"\n测试方法: {method_name}")
+                try:
+                    screenshot = method_func()
+                    if screenshot:
+                        add_log(f"  成功 - 尺寸: {screenshot.size}")
+                        
+                        # 检查截图内容
+                        if hasattr(self.auto_click_manager, '_check_screenshot_completeness'):
+                            is_complete = self.auto_click_manager._check_screenshot_completeness(screenshot)
+                            add_log(f"  内容完整性: {'完整' if is_complete else '不完整'}")
+                        
+                        # 保存截图用于检查
+                        import datetime
+                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"test_screenshot_{method_name.replace(' ', '_')}_{timestamp}.png"
+                        filepath = os.path.join("data", "tests", filename)
+                        
+                        # 确保目录存在
+                        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+                        screenshot.save(filepath)
+                        add_log(f"  截图已保存: {filepath}")
+                    else:
+                        add_log("  失败 - 返回None")
+                except Exception as e:
+                    add_log(f"  失败 - 错误: {str(e)}")
+            
+            add_log("\n=== 截图测试结束 ===")
+            
+            # 添加关闭按钮
+            ttk.Button(dialog, text="关闭", command=dialog.destroy).pack(pady=10)
+            
+        except Exception as e:
+            tk.messagebox.showerror("错误", f"截图测试失败: {str(e)}")
     
     def refresh_schedule_list(self):
         # 清空列表

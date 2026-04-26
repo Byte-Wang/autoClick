@@ -98,8 +98,32 @@ class AutoClickManager:
             return
         
         try:
-            # 截取屏幕
-            screenshot = ImageGrab.grab()
+            # 截取屏幕 - 使用nircmd.exe
+            import subprocess
+            import time
+            
+            # 获取当前程序目录
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            # nircmd.exe路径配置
+            nircmd_paths = [
+                os.path.join(current_dir, "nircmd.exe"),  # 当前程序目录
+                os.path.join(current_dir, "..", "nircmd.exe"),  # 上级目录
+                r"C:\Users\Administrator\Downloads\nircmdnet_64714\nircmd-x64\nircmd.exe",  # 用户指定路径
+                r"C:\Program Files\nircmd\nircmd.exe",  # 程序文件目录
+                r"C:\Program Files (x86)\nircmd\nircmd.exe"  # 程序文件目录(x86)
+            ]
+            
+            # 查找nircmd.exe路径
+            nircmd_path = None
+            for path in nircmd_paths:
+                if os.path.exists(path):
+                    nircmd_path = path
+                    break
+            
+            if not nircmd_path:
+                self.add_log("未找到nircmd.exe，请确保nircmd.exe已放置在程序目录或指定路径")
+                return
             
             # 使用文件访问锁保护文件操作
             with self.file_lock:
@@ -119,8 +143,30 @@ class AutoClickManager:
                 # 保存最新截图
                 timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 screenshot_path = os.path.join(self.screenshot_dir, f"screenshot_{timestamp}.png")
-                screenshot.save(screenshot_path)
-                self.latest_screenshot = screenshot_path
+                
+                # 执行nircmd截图命令
+                cmd = [nircmd_path, "savescreenshot", f'"{screenshot_path}"']
+                self.add_log(f"执行nircmd命令: {' '.join(cmd)}")
+                
+                result = subprocess.run(cmd, capture_output=True, timeout=10)
+                
+                if result.returncode == 0:
+                    self.add_log("nircmd截图执行成功")
+                    
+                    # 等待文件创建完成
+                    time.sleep(1)
+                    
+                    # 检查截图文件是否存在
+                    if os.path.exists(screenshot_path) and os.path.getsize(screenshot_path) > 0:
+                        self.latest_screenshot = screenshot_path
+                    else:
+                        self.add_log(f"截图文件不存在或为空: {screenshot_path}")
+                        return
+                else:
+                    self.add_log(f"nircmd执行失败，返回码: {result.returncode}")
+                    if result.stderr:
+                        self.add_log(f"错误信息: {result.stderr.decode('utf-8', errors='ignore')}")
+                    return
             
             # 添加日志
             self.add_log(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 屏幕监听: 截取屏幕成功")
